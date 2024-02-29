@@ -30,6 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import glob
 import logging
 
 from migen import *
@@ -52,7 +53,7 @@ class Rocket(CPU):
     family               = "riscv"
     name                 = "rocket"
     human_name           = "RocketRV64[imac]"
-    variants             = ["small", "medium", "linux", "full"]
+    variants             = ["Small", "Medium", "Linux", "Full"]
     data_width           = 64
     endianness           = "little"
     gcc_triple           = CPU_GCC_TRIPLE_RISCV64
@@ -88,7 +89,7 @@ class Rocket(CPU):
     # Arch.
     @staticmethod
     def get_arch(variant):
-        if variant in ["linux", "full"]:
+        if variant in ["Linux", "Full"]:
             return "rv64i2p0_mafdc"
         else:
             return "rv64i2p0_mac"
@@ -313,19 +314,15 @@ class Rocket(CPU):
 
     @staticmethod
     def add_sources(platform, variant):
-        pfx = "freechips.rocketchip.system.LitexConfig"
-        fname = f"{pfx}_{variant}_{Rocket.cpu_num_cores}_{Rocket.cpu_mem_width}"
-        vdir = get_data_mod("cpu", "rocket").data_location
-        platform.add_sources(
-            os.path.join(vdir, "generated-src"),
-            f"{fname}.v",
-            f"{fname}.behav_srams.v",
+        vdir = os.path.join(
+            get_data_mod("cpu", "rocket").data_location,
+            "generated-src",
+            f"{variant}{Rocket.cpu_num_cores}{Rocket.cpu_mem_width}"
         )
         platform.add_sources(
-            os.path.join(vdir, "vsrc"),
-            "plusarg_reader.v",
-            "AsyncResetReg.v",
-            "EICG_wrapper.v",
+            vdir,
+            *glob.glob("*.sv", root_dir=vdir),
+            *glob.glob("*.v", root_dir=vdir)
         )
 
     def add_soc_components(self, soc):
