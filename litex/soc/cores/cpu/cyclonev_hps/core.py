@@ -8,7 +8,8 @@ from migen import *
 
 from litex.gen import *
 
-from litex.soc.interconnect import axi
+from litex.soc.interconnect        import axi
+from litex.soc.interconnect.avalon import AvalonMMInterface
 
 from litex.soc.cores.cpu import CPU
 
@@ -20,6 +21,14 @@ PORT_SIZE_CONFIG = {
     64   : 0b01,
     128  : 0b10,
     None : 0b11, # Unused.
+}
+
+# F2SDRAM Ports (fixed layout, matching the configuration applied by MiSTer's Preloader/U-Boot).
+F2SDRAM_PORTS = {
+    #   Data-Width / Word-Address-Width / Rd-Wr FIFOs.
+    0 : dict(data_width=128, adr_width=28, fifos=[0, 1]),
+    1 : dict(data_width= 64, adr_width=29, fifos=[2]),
+    2 : dict(data_width= 64, adr_width=29, fifos=[3]),
 }
 
 # Cyclone V HPS ------------------------------------------------------------------------------------
@@ -64,6 +73,7 @@ class CycloneVHPS(CPU):
         self.h2f_lw_master = None     # H2F LW AXI3 Master (HPS -> Fabric, CSRs access).
         self.h2f_master    = None     # H2F    AXI3 Master (HPS -> Fabric).
         self.f2h_slave     = None     # F2H    AXI3 Slave  (Fabric -> HPS DDR3/Peripherals).
+        self.f2sdram_ports = {}       # F2SDRAM Avalon-MM Ports (Fabric -> HPS SDRAM Controller).
 
         self.h2f_rst_n     = Signal() # HPS -> Fabric reset.
 
@@ -311,6 +321,21 @@ class CycloneVHPS(CPU):
         )
         return axi_f2h
 
+    # F2SDRAM Avalon-MM Port (Fabric -> HPS SDRAM Controller) --------------------------------------
+    def add_fpga2sdram_port(self, n=0, clock_domain="sys"):
+        # Direct port to the HPS SDRAM Controller (higher bandwidth than F2H). The port layout is
+        # fixed (Port 0: 128-bit, Ports 1/2: 64-bit) since it has to match the configuration
+        # applied by the Preloader/U-Boot (applycfg), here MiSTer's one. Addresses are HPS DDR3
+        # word addresses; accesses are non-coherent with the ARM caches.
+        assert n in F2SDRAM_PORTS.keys()
+        assert n not in self.f2sdram_ports.keys()
+        port = AvalonMMInterface(
+            data_width = F2SDRAM_PORTS[n]["data_width"],
+            adr_width  = F2SDRAM_PORTS[n]["adr_width"],
+        )
+        self.f2sdram_ports[n] = (port, clock_domain)
+        return port
+
     def do_finalize(self):
         # Clocks/Resets (No Fabric -> HPS reset requests).
         self.specials += Instance("cyclonev_hps_interface_clocks_resets",
@@ -350,3 +375,72 @@ class CycloneVHPS(CPU):
             self.specials += Instance("cyclonev_hps_interface_fpga2hps",
                 i_port_size_config = PORT_SIZE_CONFIG[None],
             )
+
+        # F2SDRAM (only instantiated when at least one port is used).
+        if len(self.f2sdram_ports):
+            f2sdram_params = dict(
+                # Config (fixed, matching MiSTer's: Port 0: 128-bit, Ports 1/2: 64-bit).
+                i_cfg_port_width      = Constant(0b000000010110,      12),
+                i_cfg_cport_type      = Constant(0b000000111111,      12),
+                i_cfg_axi_mm_select   = Constant(0b000000,             6),
+                i_cfg_rfifo_cport_map = Constant(0b0010000100000000,  16),
+                i_cfg_wfifo_cport_map = Constant(0b0010000100000000,  16),
+                i_cfg_cport_rfifo_map = Constant(0b000000000011010000, 18),
+                i_cfg_cport_wfifo_map = Constant(0b000000000011010000, 18),
+
+                # Rd/Wrack always ready (as MiSTer).
+                i_rd_ready_0    = 1,
+                i_rd_ready_1    = 1,
+                i_rd_ready_2    = 1,
+                i_rd_ready_3    = 1,
+                i_wrack_ready_0 = 1,
+                i_wrack_ready_1 = 1,
+                i_wrack_ready_2 = 1,
+            )
+            for n, cfg in F2SDRAM_PORTS.items():
+                port, clock_domain = self.f2sdram_ports.get(n, (None, "sys"))
+                clk = ClockSignal(clock_domain)
+                # Unused Port: only drive Clks, tie-off Cmd.
+                if port is None:
+                    f2sdram_params.update({
+                        f"i_cmd_port_clk_{n}" : clk,
+                        f"i_cmd_valid_{n}"    : 0,
+                        f"i_cmd_data_{n}"     : 0,
+                    })
+                    for fifo in cfg["fifos"]:
+                        f2sdram_params.update({
+                            f"i_rd_clk_{fifo}"  : clk,
+                            f"i_wr_clk_{fifo}"  : clk,
+                            f"i_wr_data_{fifo}" : 0,
+                        })
+                    continue
+                # Used Port: Cmd.
+                cmd_ready = Signal()
+                self.comb += port.waitrequest.eq(~cmd_ready)
+                f2sdram_params.update({
+                    f"i_cmd_port_clk_{n}" : clk,
+                    f"i_cmd_valid_{n}"    : port.read | port.write,
+                    f"o_cmd_ready_{n}"    : cmd_ready,
+                    f"i_cmd_data_{n}"     : Cat(
+                        port.read,                             #     0: Read.
+                        port.write,                            #     1: Write.
+                        port.address,                          #    2+: Word Address.
+                        Constant(0, 32 - cfg["adr_width"]),    #   :34: Padding.
+                        port.burstcount,                       # 41:34: Burst Count.
+                        Constant(0, 18)),                      # 59:42: Padding.
+                })
+                # Used Port: Rd/Wr Data (64-bit per FIFO, 128-bit ports use 2 FIFOs).
+                for i, fifo in enumerate(cfg["fifos"]):
+                    f2sdram_params.update({
+                        f"i_rd_clk_{fifo}"  : clk,
+                        f"o_rd_data_{fifo}" : port.readdata[64*i:64*(i + 1)],
+                        f"i_wr_clk_{fifo}"  : clk,
+                        f"i_wr_data_{fifo}" : Cat(
+                            port.writedata[ 64*i:64*(i + 1)],  # 63: 0: Data.
+                            Constant(0, 16),                   # 79:64: Padding.
+                            port.byteenable[ 8*i: 8*(i + 1)],  # 87:80: Byte-Enable.
+                            Constant(0, 2)),                   # 89:88: Padding.
+                    })
+                # Used Port: Rd-Data Valid (from the port's last FIFO).
+                f2sdram_params.update({f"o_rd_valid_{cfg['fifos'][-1]}" : port.readdatavalid})
+            self.specials += Instance("cyclonev_hps_interface_fpga2sdram", **f2sdram_params)
