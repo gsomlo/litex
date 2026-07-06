@@ -308,6 +308,40 @@ void isr(void)
 		irqs &= irqs - 1; // clear this irq (the first bit set)
 	}
 }
+/****************************************************/
+/* ISR Handling for Cyclone V HPS (GIC-390) CPU.    */
+/****************************************************/
+#elif defined(__cyclonev_hps__)
+
+/* Interrupt Service Routine. */
+void isr(void)
+{
+    while (1) {
+        /* Acknowledge (claim) the interrupt. */
+        unsigned int id = gic_cpu_read(GIC_CPU_IAR) & 0x3ff;
+
+        /* Spurious interrupt: all pending interrupts handled. */
+        if (id >= 1020)
+            return;
+
+        /* Dispatch F2H IRQs to the interrupt table. */
+        if ((id >= GIC_F2H_IRQ_OFFSET) && (id < GIC_F2H_IRQ_OFFSET + 32)) {
+            unsigned int irq = id - GIC_F2H_IRQ_OFFSET;
+            if ((irq < CONFIG_CPU_INTERRUPTS) && irq_table[irq].isr)
+                irq_table[irq].isr();
+            else {
+                irq_setmask(irq_getmask() & ~(1 << irq));
+                printf("\n*** disabled spurious irq %d ***\n", irq);
+            }
+        } else {
+            printf("## GIC: Unhandled interrupt: %d\n", id);
+        }
+
+        /* Signal End Of Interrupt. */
+        gic_cpu_write(GIC_CPU_EOIR, id);
+    }
+}
+
 /*******************************************************/
 /* Generic ISR Handling for CPUs with Interrupt Table. */
 /*******************************************************/

@@ -45,7 +45,7 @@ class CycloneVHPS(CPU):
     reset_address_check      = False # HPS boots from its own BootROM/SD-Card; reset_address is only
                                      # used to link the (optional) BIOS in HPS DDR3.
     gcc_triple               = "arm-none-eabi"
-    gcc_flags                = "-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard"
+    gcc_flags                = "-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard -D__cyclonev_hps__"
     linker_output_format     = "elf32-littlearm"
     nop                      = "nop"
     io_regions               = {0xff20_0000: 0x0020_0000} # Origin, Length: H2F LW bridge window.
