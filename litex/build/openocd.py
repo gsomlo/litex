@@ -78,6 +78,10 @@ class OpenOCD(GenericProgrammer):
         elif "10ax" in cfg_str:
             warn_ignored("Intel Arria10", 0xc)
             return 0xc
+        # Intel CycloneIV.
+        elif "ep4ce" in cfg_str:
+            warn_ignored("Intel CycloneIV", 0xe)
+            return 0xe
         # Xilinx ZynqMP.
         elif "zynqmp" in cfg_str:
             return lookup_ir("Xilinx ZynqMP", {
