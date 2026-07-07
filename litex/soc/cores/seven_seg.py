@@ -1,59 +1,82 @@
 #
 # This file is part of LiteX.
 #
-# Copyright (c) 2020-2022 Florent Kermarrec <florent@enjoy-digital.fr>
-# Copyright (c) 2022 Wolfgang Nagele <mail@wnagele.com>
+# Copyright (c) 2026 Paul Hamshere <p.w.hamshere@gmail.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
+
 from litex.gen import *
+
 from litex.soc.interconnect.csr import *
 
+# Seven Segment Display ----------------------------------------------------------------------------
+
+_HEX2SEG = Array([
+    0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07,
+    0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71,
+])
+
+
 class SevenSegmentDisplay(LiteXModule):
-    def __init__(self, sys_clk_freq, segments_pads, anodes_pads):
-        # CSR register allowing the CPU to write data (32-bit for 8 hex digits)
-        self.values = CSRStorage(32, description="Hex values for the 8 digits")
+    def __init__(self, sys_clk_freq, segments_pads, anodes_pads,
+        refresh_rate       = 1e3,
+        segment_active_low = True,
+        digit_active_low   = True):
+        n_segments = len(segments_pads)
+        n_digits   = len(anodes_pads)
+        if n_segments not in [7, 8]:
+            raise ValueError("segments_pads must expose 7 or 8 signals")
+        if n_digits <= 0:
+            raise ValueError("anodes_pads must expose at least one signal")
+        if refresh_rate <= 0:
+            raise ValueError("refresh_rate must be greater than 0")
 
-        # Segment map for common anode (0 = ON, 1 = OFF)
-        hex_decoder = Array([
-            0xc0, 0xf9, 0xa4, 0xb0, 0x99, 0x92, 0x82, 0xf8, # 0-7
-            0x80, 0x90, 0x88, 0x83, 0xc6, 0xa1, 0x86, 0x8e  # 8-F
-        ])
+        refresh_cycles = int(sys_clk_freq/(refresh_rate*n_digits))
+        if refresh_cycles <= 0:
+            raise ValueError("sys_clk_freq too low for selected refresh_rate")
 
-        div_counter = Signal(max=int(sys_clk_freq / 8000) + 1)
-        digit_index = Signal(3) # 0 to 7 counter
+        self.n_segments     = n_segments
+        self.n_digits       = n_digits
+        self.refresh_cycles = refresh_cycles
+        self.values         = CSRStorage(4*n_digits, description=
+            "Packed hexadecimal digit values. Digit 0 uses bits 3:0.")
 
-        val = Signal(4)
-        anode = Signal(8)
+        # # #
 
-        # Internal registers for physical pins
+        digit            = Signal(max=max(n_digits, 2))
+        digit_value      = Signal(4)
+        digit_onehot     = Signal(n_digits)
+        decoded_segments = Signal(n_segments)
+        refresh_counter  = Signal(max=max(refresh_cycles, 2))
+
+        cases = {}
+        for n in range(n_digits):
+            cases[n] = [
+                digit_value.eq(self.values.storage[4*n:4*(n + 1)]),
+                digit_onehot.eq(1 << n),
+            ]
+        cases["default"] = cases[0]
+
+        segment_invert = segment_active_low*((2**n_segments) - 1)
+        digit_invert   = digit_active_low*((2**n_digits) - 1)
+
         self.comb += [
-            Case(digit_index, {
-                0: [ val.eq(self.values.storage[ 0: 4]),
-                     anode.eq(0b11111110), ],
-                1: [ val.eq(self.values.storage[ 4: 8]),
-                     anode.eq(0b11111101), ],
-                2: [ val.eq(self.values.storage[ 8:12]),
-                     anode.eq(0b11111011), ],
-                3: [ val.eq(self.values.storage[12:16]),
-                     anode.eq(0b11110111), ],
-                4: [ val.eq(self.values.storage[16:20]),
-                     anode.eq(0b11101111), ],
-                5: [ val.eq(self.values.storage[20:24]),
-                     anode.eq(0b11011111), ],
-                6: [ val.eq(self.values.storage[24:28]),
-                     anode.eq(0b10111111), ],
-                7: [ val.eq(self.values.storage[28:32]),
-                     anode.eq(0b01111111), ],
-            }),
-            segments_pads.eq(hex_decoder[val]),
-            anodes_pads.eq(anode)
+            Case(digit, cases),
+            decoded_segments.eq(_HEX2SEG[digit_value]),
+            segments_pads.eq(decoded_segments ^ segment_invert),
+            anodes_pads.eq(digit_onehot ^ digit_invert),
         ]
 
         self.sync += [
-            div_counter.eq(div_counter + 1),
-            If(div_counter == int(sys_clk_freq / 8000),
-                div_counter.eq(0),
-                digit_index.eq(digit_index + 1)
+            If(refresh_counter == (refresh_cycles - 1),
+                refresh_counter.eq(0),
+                If(digit == (n_digits - 1),
+                    digit.eq(0)
+                ).Else(
+                    digit.eq(digit + 1)
+                )
+            ).Else(
+                refresh_counter.eq(refresh_counter + 1)
             )
         ]
