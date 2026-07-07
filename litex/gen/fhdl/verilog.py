@@ -504,45 +504,36 @@ def _normalize_comb_cycle_policy(policy):
             f"{', '.join(sorted(_comb_cycle_policies))}."
         )
 
-def _list_target_inputs(node, target):
+def _collect_target_dependencies(node, deps, active_inputs=None):
+    if active_inputs is None:
+        active_inputs = set()
+
     if isinstance(node, _Assign):
-        if target in list_targets(node):
-            return set(list_inputs(node))
-        return set()
+        inputs = set(list_inputs(node)) | active_inputs
+        for target in list_targets(node):
+            deps[target] |= inputs
 
     elif isinstance(node, collections.abc.Iterable):
-        r = set()
         for statement in node:
-            r |= _list_target_inputs(statement, target)
-        return r
+            _collect_target_dependencies(statement, deps, active_inputs)
 
     elif isinstance(node, If):
-        if target not in list_targets(node):
-            return set()
-        r = set(list_inputs(node.cond))
-        r |= _list_target_inputs(node.t, target)
-        r |= _list_target_inputs(node.f, target)
-        return r
+        inputs = active_inputs | set(list_inputs(node.cond))
+        _collect_target_dependencies(node.t, deps, inputs)
+        _collect_target_dependencies(node.f, deps, inputs)
 
     elif isinstance(node, Case):
-        if target not in list_targets(node):
-            return set()
-        r = set(list_inputs(node.test))
+        inputs = active_inputs | set(list_inputs(node.test))
         for statements in node.cases.values():
-            r |= _list_target_inputs(statements, target)
-        return r
-
-    elif target in list_targets(node):
-        return set(list_inputs(node))
-
-    else:
-        return set()
+            _collect_target_dependencies(statements, deps, inputs)
 
 def _build_target_dependency_graph(statements, targets):
     targets = set(targets)
-    deps = {}
+    deps = collections.defaultdict(set)
+    _collect_target_dependencies(statements, deps)
     for target in targets:
-        deps[target] = _list_target_inputs(statements, target) & targets
+        deps[target] &= targets
+    deps = {target: deps[target] for target in targets}
     return deps
 
 def _topological_sort_targets(targets, deps, ns):
