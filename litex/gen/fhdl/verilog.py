@@ -357,6 +357,53 @@ def _use_wire(stmts):
     return (len(stmts) == 1 and isinstance(stmts[0], _Assign) and
             not isinstance(stmts[0].l, _Slice))
 
+def _has_forward_target_reference(node, later_targets=None):
+    """Return whether a statement tree reads a target assigned later on the same path."""
+    if later_targets is None:
+        later_targets = set()
+
+    if isinstance(node, _Assign):
+        reads   = set(list_inputs(node))
+        targets = set(list_targets(node))
+        return not reads.isdisjoint(later_targets), targets
+
+    elif isinstance(node, If):
+        targets = set(list_targets(node))
+        reads   = set(list_inputs(node.cond))
+        if not reads.isdisjoint(later_targets | targets):
+            return True, targets
+        for statements in [node.t, node.f]:
+            has_forward, _ = _has_forward_target_reference(statements, later_targets)
+            if has_forward:
+                return True, targets
+        return False, targets
+
+    elif isinstance(node, Case):
+        targets = set(list_targets(node))
+        reads   = set(list_inputs(node.test))
+        if not reads.isdisjoint(later_targets | targets):
+            return True, targets
+        for statements in node.cases.values():
+            has_forward, _ = _has_forward_target_reference(statements, later_targets)
+            if has_forward:
+                return True, targets
+        return False, targets
+
+    elif isinstance(node, collections.abc.Iterable):
+        targets = set()
+        for statement in reversed(list(node)):
+            has_forward, statement_targets = _has_forward_target_reference(
+                statement,
+                later_targets | targets,
+            )
+            if has_forward:
+                return True, targets | statement_targets
+            targets |= statement_targets
+        return False, targets
+
+    else:
+        return False, set()
+
 def _list_comb_wires(f):
     r = set()
     groups = group_by_targets(f.comb)
@@ -494,10 +541,15 @@ def _generate_combinatorial_logic(f, ns):
             if _use_wire(g[1]):
                 r += "assign " + _generate_node(ns, AssignType.BLOCKING, 0, g[1][0])
             else:
+                assign_type = (
+                    AssignType.NON_BLOCKING if _has_forward_target_reference(g[1])[0]
+                    else AssignType.BLOCKING
+                )
+                assignment  = " <= " if assign_type == AssignType.NON_BLOCKING else " = "
                 r += "always @(*) begin\n"
                 for t in sorted(g[0], key=lambda x: ns.get_name(x)):
-                    r += _tab + ns.get_name(t) + " = " + _generate_expression(ns, t.reset)[0] + ";\n"
-                r += _generate_node(ns, AssignType.BLOCKING, 1, g[1])
+                    r += _tab + ns.get_name(t) + assignment + _generate_expression(ns, t.reset)[0] + ";\n"
+                r += _generate_node(ns, assign_type, 1, g[1])
                 r += "end\n"
     r += "\n"
     return r
