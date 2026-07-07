@@ -44,6 +44,17 @@ class _OrderedCombReference(Module):
         )
 
 
+class _CombCycle(Module):
+    def __init__(self):
+        self.a = Signal(name="a")
+        self.b = Signal(name="b")
+
+        self.comb += [
+            self.a.eq(self.b),
+            self.b.eq(self.a),
+        ]
+
+
 class _SyncOutput(Module):
     def __init__(self):
         self.clock_domains.cd_sys = ClockDomain()
@@ -89,15 +100,16 @@ class TestVerilog(unittest.TestCase):
         self.assertIn("status[0] = flag;", v)
         self.assertIn("status[12:8] = count;", v)
 
-    def test_forward_comb_reference_uses_non_blocking_assignments(self):
+    def test_forward_comb_reference_is_dependency_ordered(self):
         dut = _ForwardCombReference()
         v = convert(dut, ios={dut.sel, dut.a, dut.b}, name="top").main_source
 
-        self.assertIn("a <= 1'd0;", v)
-        self.assertIn("b <= 1'd0;", v)
-        self.assertIn("a <= b;", v)
-        self.assertIn("b <= 1'd1;", v)
-        self.assertNotIn("a = b;", v)
+        self.assertIn("a = 1'd0;", v)
+        self.assertIn("b = 1'd0;", v)
+        self.assertIn("b = 1'd1;", v)
+        self.assertIn("a = b;", v)
+        self.assertLess(v.index("b = 1'd1;"), v.index("a = b;"))
+        self.assertNotIn("a <= b;", v)
 
     def test_ordered_comb_reference_keeps_blocking_assignments(self):
         dut = _OrderedCombReference()
@@ -108,6 +120,16 @@ class TestVerilog(unittest.TestCase):
         self.assertIn("b = 1'd1;", v)
         self.assertIn("a = b;", v)
         self.assertNotIn("a <= b;", v)
+
+    def test_comb_cycle_can_warn(self):
+        dut = _CombCycle()
+        with self.assertWarnsRegex(RuntimeWarning, "a -> b -> a"):
+            convert(dut, ios={dut.a, dut.b}, name="top", comb_cycle_policy="warn")
+
+    def test_comb_cycle_can_error(self):
+        dut = _CombCycle()
+        with self.assertRaisesRegex(ValueError, "a -> b -> a"):
+            convert(dut, ios={dut.a, dut.b}, name="top", comb_cycle_policy="error")
 
     def test_sync_output_port_is_declared_as_reg(self):
         dut = _SyncOutput()
