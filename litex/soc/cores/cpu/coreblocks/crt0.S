@@ -28,8 +28,15 @@ reset_vector:
 	j 1b
 3:
 
+#ifdef __riscv_plic__
+    call plic_init
+    li t0, 0x800
+    csrw mie,t0
+#endif
+
 	call litex_startup_init
-	call main
+
+    call main
 
 1:	j 1b
 
