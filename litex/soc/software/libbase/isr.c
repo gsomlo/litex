@@ -16,6 +16,30 @@ void isr_dec(void);
 void isr(void);
 #endif
 
+#if defined(CONFIG_CPU_HAS_INTERRUPT)
+#if defined(__riscv_plic__) || defined(__cva5__)
+void plic_init(void);
+#endif
+#if defined(__riscv_aplic__)
+void aplic_init(void);
+#endif
+#endif
+
+/*
+ * Initialize interrupt controllers/sources.
+ * Global interrupt enable remains controlled by irq_setie().
+ */
+void irq_init(void)
+{
+#if defined(CONFIG_CPU_HAS_INTERRUPT) && (defined(__riscv_plic__) || defined(__cva5__))
+    plic_init();
+    csrw(mie, 0x800);
+#elif defined(CONFIG_CPU_HAS_INTERRUPT) && defined(__riscv_aplic__)
+    aplic_init();
+    csrw(mie, 0x800);
+#endif
+}
+
 #ifdef CONFIG_CPU_HAS_INTERRUPT
 
 /*******************************************************/
@@ -49,8 +73,6 @@ int irq_detach(unsigned int irq)
 /* ISR and PLIC Initialization for RISC-V PLIC-based CPUs. */
 /***********************************************************/
 #if defined(__riscv_plic__)
-
-void plic_init(void);
 
 /* PLIC initialization. */
 void plic_init(void)
@@ -262,33 +284,8 @@ void isr_dec(void)
 /***********************************/
 #elif defined(__cva5__)
 
-void plic_init(void);
-
 void plic_init(void)
 {
-}
-struct irq_table
-{
-	isr_t isr;
-} irq_table[CONFIG_CPU_INTERRUPTS];
-
-int irq_attach(unsigned int irq, isr_t isr)
-{
-	if (irq >= CONFIG_CPU_INTERRUPTS) {
-		printf("Inv irq %d\n", irq);
-		return -1;
-	}
-
-	unsigned int ie = irq_getie();
-	irq_setie(0);
-	irq_table[irq].isr = isr;
-	irq_setie(ie);
-	return irq;
-}
-
-int irq_detach(unsigned int irq)
-{
-	return irq_attach(irq, NULL);
 }
 
 void isr(void)

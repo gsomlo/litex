@@ -102,10 +102,7 @@ bss_loop:
   j bss_loop
 bss_done:
 
-  call plic_init // initialize external interrupt controller
-  li t0, 0x800   // external interrupt sources only (using LiteX timer);
-                 // NOTE: must still enable mstatus.MIE!
-  csrw mie,t0
+  call irq_init // initialize interrupt controller
 
   call litex_startup_init
   call main
@@ -119,4 +116,3 @@ infinit_loop:
   smp_lottery_target: .word 0
   smp_lottery_args:   .word 0; .word 0; .word 0
   smp_lottery_lock:   .word 0
-

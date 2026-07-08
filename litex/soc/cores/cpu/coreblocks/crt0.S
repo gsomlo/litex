@@ -29,14 +29,12 @@ reset_vector:
 3:
 
 #ifdef __riscv_plic__
-    call plic_init
-    li t0, 0x800
-    csrw mie,t0
+	call irq_init // initialize interrupt controller
 #endif
 
 	call litex_startup_init
 
-    call main
+	call main
 
 1:	j 1b
 
