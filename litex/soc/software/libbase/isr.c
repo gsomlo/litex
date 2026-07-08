@@ -33,10 +33,10 @@ void irq_init(void)
 {
 #if defined(CONFIG_CPU_HAS_INTERRUPT) && (defined(__riscv_plic__) || defined(__cva5__))
     plic_init();
-    csrw(mie, 0x800);
+    csrs(mie, 0x800);
 #elif defined(CONFIG_CPU_HAS_INTERRUPT) && defined(__riscv_aplic__)
     aplic_init();
-    csrw(mie, 0x800);
+    csrs(mie, 0x800);
 #endif
 }
 

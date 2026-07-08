@@ -28,10 +28,6 @@ reset_vector:
 	j 1b
 3:
 
-#ifdef __riscv_plic__
-	call irq_init // initialize interrupt controller
-#endif
-
 	call litex_startup_init
 
 	call main

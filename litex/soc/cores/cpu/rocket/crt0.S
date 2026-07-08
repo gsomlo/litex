@@ -102,8 +102,6 @@ bss_loop:
   j bss_loop
 bss_done:
 
-  call irq_init // initialize interrupt controller
-
   call litex_startup_init
   call main
 inf_loop:
