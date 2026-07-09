@@ -468,6 +468,21 @@ class TestSoCBusHandler(unittest.TestCase):
         bus.add_region("io",       SoCIORegion(origin=0x1200_0000, size=0x6e00_0000))
         bus.add_region("main_ram", SoCRegion(  origin=0x8000_0000, size=0x2000_0000))
 
+    def test_io_region_can_extend_beyond_bus_address_width(self):
+        bus = SoCBusHandler(address_width=32)
+
+        bus.add_region("io", SoCIORegion(origin=0xe000_0000, size=0xff_2000_0000))
+
+        self.assertIn("io", bus.io_regions)
+
+    def test_bus_region_must_fit_bus_address_width(self):
+        bus = SoCBusHandler(address_width=32)
+
+        with _assert_raises_soc_error(self):
+            bus.add_region("too_high", SoCRegion(origin=0xf000_0000, size=0x2000_0000))
+
+        self.assertNotIn("too_high", bus.regions)
+
     def test_partial_io_region_overlap_is_rejected(self):
         bus = SoCBusHandler()
         bus.add_region("io", SoCIORegion(origin=0x1200_0000, size=0x7000_0000))
