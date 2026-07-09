@@ -219,7 +219,7 @@ def print_indented(output, indent="    ", max_lines=None):
 
 def git_format_sha1(sha1):
     if isinstance(sha1, int):
-        return f"{sha1:040x}"
+        return f"{sha1:07x}"
     return str(sha1)
 
 def git_checkout(sha1=None, tag=None, quiet=False, cwd=None):
@@ -734,7 +734,7 @@ def litex_setup_format_frozen_repo(name, repo, git_url, git_sha1):
         args.append(f"develop={repo.develop}")
     if repo.editable is not True:
         args.append(f"editable={repo.editable}")
-    args.append(f"sha1=0x{git_sha1}")
+    args.append(f'sha1="{git_sha1}"')
     if repo.branch != "master":
         args.append(f'branch="{repo.branch}"')
     if repo.tag is not None:
