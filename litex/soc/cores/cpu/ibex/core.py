@@ -220,7 +220,8 @@ class Ibex(CPU):
         platform.add_verilog_include_path(os.path.join(ibexdir,
             "dv", "uvm", "core_ibex", "common", "prim")
         )
-        platform.add_source(os.path.join(ibexdir, "syn", "rtl", "prim_clock_gating.v"))
+        platform.add_source(os.path.join(ibexdir, "syn", "rtl", "prim_clock_gating.v"),
+            language="systemverilog")
         platform.add_sources(os.path.join(ibexdir, "vendor", "lowrisc_ip", "ip", "prim", "rtl"),
             "prim_util_pkg.sv",
             "prim_count_pkg.sv",
@@ -297,7 +298,7 @@ class Ibex(CPU):
             platform.add_source(os.path.join(rtl_base, "ibex_register_file_fpga.sv"))
 
         platform.yosys_use_slang  = True
-        platform.yosys_slang_opts = "--ignore-unknown-modules --relax-enum-conversions --ignore-initial --top ibex_top -G RegFile={}".format(
+        platform.yosys_slang_opts = "--relax-enum-conversions --ignore-initial --top ibex_top -G RegFile={}".format(
             regfiles[regfile])
 
     def set_reset_address(self, reset_address):

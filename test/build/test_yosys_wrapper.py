@@ -14,8 +14,9 @@ class _Platform:
     def __init__(self):
         self.verilog_include_paths = ["/include"]
         self.sources = [
-            ("/src/top.v",  "verilog",       "work"),
-            ("/src/pkg.sv", "systemverilog", "work"),
+            ("/src/top.v",      "verilog",       "work"),
+            ("/src/pkg.sv",     "systemverilog", "work"),
+            ("/src/include.v",  "systemverilog", "work"),
         ]
 
 
@@ -38,7 +39,7 @@ class TestYosysWrapper(unittest.TestCase):
 
         self.assertIn("plugin -i slang", read_files)
         self.assertIn('read_verilog -I/include "/src/top.v"', read_files)
-        self.assertIn('read_slang --ignore-initial --top top -I/include "/src/pkg.sv"', read_files)
+        self.assertIn("read_slang --ignore-initial --top top -I/include /src/pkg.sv /src/include.v", read_files)
         self.assertNotIn("read_verilog -sv", read_files)
 
     def test_yosys_slang_argdict(self):

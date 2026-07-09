@@ -99,7 +99,7 @@ class YosysWrapper():
             reads.append(f'read_{language}{includes} "{filename}"')
         if slang_files:
             opts  = f" {self._slang_opts}" if self._slang_opts else ""
-            files = " ".join(f'"{filename}"' for filename in slang_files)
+            files = " ".join(slang_files)
             reads.insert(0, "plugin -i slang")
             reads.append(f"read_slang{opts}{includes} {files}")
         return "\n".join(reads)

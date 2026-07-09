@@ -36,9 +36,16 @@ class TestIbexSources(unittest.TestCase):
             self._add_sources(platform, root)
 
         sources = [os.path.relpath(source[0], root) for source in platform.sources]
+        source_languages = {
+            os.path.relpath(source[0], root): source[1]
+            for source in platform.sources
+        }
+
         self.assertTrue(platform.yosys_use_slang)
         self.assertIn("--top ibex_top", platform.yosys_slang_opts)
         self.assertIn("-G RegFile=0", platform.yosys_slang_opts)
+        self.assertNotIn("--ignore-unknown-modules", platform.yosys_slang_opts)
+        self.assertEqual(source_languages[os.path.join("syn", "rtl", "prim_clock_gating.v")], "systemverilog")
         self.assertIn(os.path.join("vendor", "lowrisc_ip", "ip", "prim_generic", "rtl", "prim_generic_flop.sv"), sources)
         self.assertIn(os.path.join("dv", "uvm", "core_ibex", "common", "prim", "prim_flop.sv"), sources)
         self.assertNotIn(os.path.join("rtl", "ibex_register_file_fpga.sv"), sources)
