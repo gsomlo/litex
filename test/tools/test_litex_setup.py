@@ -205,6 +205,14 @@ class TestLiteXSetup(unittest.TestCase):
                 callback(*args, **kwargs)
         return stdout.getvalue(), stderr.getvalue()
 
+    def test_checkout_preserves_leading_zeroes_in_integer_sha(self):
+        sha1 = "0ddfb44723438d39636cfbf63e9e27609ec9bd43"
+
+        with mock.patch("litex_setup.subprocess_check_output", return_value="") as run:
+            litex_setup.git_checkout(sha1=int(sha1, 16), cwd=self.workspace)
+
+        self.assertEqual(run.call_args[0][0][-1], sha1)
+
     def test_update_can_be_cancelled_when_repo_has_local_changes(self):
         _upstream_path, repo_path = self.create_repo()
         self.append_file(os.path.join(repo_path, "README.md"), "local change\n")
