@@ -44,6 +44,7 @@ class TestIbexSources(unittest.TestCase):
         self.assertTrue(platform.yosys_use_slang)
         self.assertIn("--top ibex_top", platform.yosys_slang_opts)
         self.assertIn("-G RegFile=0", platform.yosys_slang_opts)
+        self.assertIn("--infer-input-ports-as-vars", platform.yosys_slang_opts)
         self.assertNotIn("--ignore-unknown-modules", platform.yosys_slang_opts)
         self.assertEqual(source_languages[os.path.join("syn", "rtl", "prim_clock_gating.v")], "systemverilog")
         self.assertIn(os.path.join("vendor", "lowrisc_ip", "ip", "prim_generic", "rtl", "prim_generic_flop.sv"), sources)

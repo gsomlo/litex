@@ -297,9 +297,15 @@ class Ibex(CPU):
         if regfile == "fpga":
             platform.add_source(os.path.join(rtl_base, "ibex_register_file_fpga.sv"))
 
+        yosys_slang_opts = [
+            "--relax-enum-conversions",
+            "--ignore-initial",
+            "--infer-input-ports-as-vars",
+            "--top ibex_top",
+            "-G RegFile={}".format(regfiles[regfile]),
+        ]
         platform.yosys_use_slang  = True
-        platform.yosys_slang_opts = "--relax-enum-conversions --ignore-initial --top ibex_top -G RegFile={}".format(
-            regfiles[regfile])
+        platform.yosys_slang_opts = " ".join(yosys_slang_opts)
 
     def set_reset_address(self, reset_address):
         self.reset_address = reset_address
