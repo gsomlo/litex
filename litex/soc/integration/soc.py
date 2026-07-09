@@ -303,9 +303,10 @@ class SoCBusHandler(LiteXModule):
             self.logger.error("{} already declared as Region:".format(colorer(name, color="red")))
             self.logger.error(self)
             raise SoCError()
-        # Check Region fits in the Bus Address Space (the decode extent for SoCRegions, since the
-        # decoder matches the full power-of-2 window).
-        if isinstance(region, SoCRegion) and (region.origin is not None):
+        # Check decoded Bus Regions fit in the Bus Address Space. SoCIORegions describe CPU-side
+        # IO/cacheability windows and can be wider than the LiteX bus address width.
+        if (isinstance(region, SoCRegion) and not isinstance(region, SoCIORegion) and
+            (region.origin is not None)):
             if (region.origin < 0) or (self._region_overlap_end(region) > 2**self.address_width):
                 self.logger.error("{} Region {} {}-bit Bus Address Space:".format(
                     colorer(name, color="red"),
