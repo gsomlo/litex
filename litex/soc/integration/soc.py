@@ -2857,6 +2857,13 @@ class LiteXSoC(SoC):
             self.add_constant(f"{name}_MODULE_NAME",       module.name)
             self.add_constant(f"{name}_MODULE_TOTAL_SIZE", module.total_size)
             self.add_constant(f"{name}_MODULE_PAGE_SIZE",  module.page_size)
+            erase_opcode    = getattr(module, "erase_opcode", None)
+            erase_size      = getattr(module, "erase_size", None)
+            erase_addr_bits = getattr(module, "erase_addr_bits", None)
+            if None not in [erase_opcode, erase_size, erase_addr_bits]:
+                self.add_constant(f"{name}_MODULE_ERASE_OPCODE",    erase_opcode.code)
+                self.add_constant(f"{name}_MODULE_ERASE_SIZE",      erase_size)
+                self.add_constant(f"{name}_MODULE_ERASE_ADDR_BITS", erase_addr_bits)
             if mode in [ "4x" ]:
                 if module.bus_width >= 4 and SpiNorFlashOpCodes.READ_1_1_4 in module.supported_opcodes:
                     self.add_constant(f"{name}_MODULE_QUAD_CAPABLE")

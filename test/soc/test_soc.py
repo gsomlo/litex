@@ -1268,6 +1268,37 @@ class TestSoC(unittest.TestCase):
         with _assert_raises_soc_error(self):
             soc.add_spi_flash()
 
+    def test_spi_flash_exports_erase_geometry(self):
+        from litespi.ids import SpiNorFlashManufacturerIDs
+        from litespi.opcodes import SpiNorFlashOpCodes as Codes
+        from litespi.phy.model import LiteSPIPHYModel
+        from litespi.spi_nor_flash_module import SpiNorFlashModule
+
+        class EraseGeometryModule(SpiNorFlashModule):
+            manufacturer_id = SpiNorFlashManufacturerIDs.NONJEDEC
+            device_id       = 0x1234
+            name            = "erase-geometry"
+            total_size      = 256
+            page_size       = 256
+            total_pages     = 1
+            supported_opcodes = [Codes.READ_1_1_1, Codes.PP_1_1_1]
+            dummy_bits = 0
+
+        module = EraseGeometryModule(Codes.READ_1_1_1)
+        # Set the attributes directly to keep this test compatible with LiteSPI releases that
+        # predate erase descriptors while exercising LiteX's constant generation.
+        module.erase_opcode    = Codes.BE_4K_4B
+        module.erase_size      = 4 * 1024
+        module.erase_addr_bits = 32
+        phy = LiteSPIPHYModel(module, init=[0])
+        soc = LiteXSoC(_FakePlatform(), sys_clk_freq=1e6)
+        soc.cpu = SimpleNamespace(endianness="little")
+        soc.add_spi_flash(mode="1x", module=module, phy=phy, with_master=True)
+
+        self.assertEqual(soc.constants["SPIFLASH_MODULE_ERASE_OPCODE"], Codes.BE_4K_4B.code)
+        self.assertEqual(soc.constants["SPIFLASH_MODULE_ERASE_SIZE"], 4 * 1024)
+        self.assertEqual(soc.constants["SPIFLASH_MODULE_ERASE_ADDR_BITS"], 32)
+
     def test_spi_ram_requires_module(self):
         soc = LiteXSoC(_FakePlatform(), sys_clk_freq=1e6)
 
