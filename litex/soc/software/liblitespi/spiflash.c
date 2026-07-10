@@ -214,6 +214,8 @@ static void spiflash_write_enable(void)
 
 #ifdef SPIFLASH_MODULE_QUAD_CAPABLE
 #define SPIFLASH_READY_TIMEOUT 1000
+#define SPIFLASH_SR1_QE_BIT6   0x40
+#define SPIFLASH_SR1_WRITABLE  0xfc
 
 static bool spiflash_wait_until_ready(void)
 {
@@ -231,7 +233,21 @@ static bool spiflash_wait_until_ready(void)
 
 static bool spiflash_enable_quad_mode(void)
 {
-#ifdef SPIFLASH_MODULE_QUAD_ENABLE_WRR_CR1_BIT1
+#if defined(SPIFLASH_MODULE_QUAD_ENABLE_WRSR_SR1_BIT6)
+	uint32_t sr = spiflash_read_status_register();
+
+	if (sr == 0xff) {
+		printf("Unable to read SPI Flash status register.\n");
+		return false;
+	}
+
+	if (sr & SPIFLASH_SR1_QE_BIT6)
+		return true;
+
+	spiflash_write_enable();
+	/* Preserve writable SR1 bits while excluding the WIP/WEL status bits. */
+	spiflash_master_write((0x01 << 8) | ((sr | SPIFLASH_SR1_QE_BIT6) & SPIFLASH_SR1_WRITABLE), 2, 1, 0x1);
+#elif defined(SPIFLASH_MODULE_QUAD_ENABLE_WRR_CR1_BIT1)
 	uint32_t sr = spiflash_read_status_register();
 	uint32_t cr = spiflash_read_register(0x35);
 
@@ -252,7 +268,13 @@ static bool spiflash_enable_quad_mode(void)
 		return false;
 	}
 
-#ifdef SPIFLASH_MODULE_QUAD_ENABLE_WRR_CR1_BIT1
+#if defined(SPIFLASH_MODULE_QUAD_ENABLE_WRSR_SR1_BIT6)
+	sr = spiflash_read_status_register();
+	if ((sr == 0xff) || ((sr & SPIFLASH_SR1_QE_BIT6) == 0)) {
+		printf("SPI Flash quad enable failed.\n");
+		return false;
+	}
+#elif defined(SPIFLASH_MODULE_QUAD_ENABLE_WRR_CR1_BIT1)
 	if ((spiflash_read_register(0x35) & 0x02) == 0) {
 		printf("SPI Flash quad enable failed.\n");
 		return false;
